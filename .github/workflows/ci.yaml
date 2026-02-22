@@ -1,0 +1,60 @@
+name: CI and GitOps Update
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  REGION: europe-north2
+  REPOSITORY: my-app-repo
+  IMAGE_NAME: my-custom-app
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write   # Required for Workload Identity Federation (recommended)
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # ✅ Authenticate to GCP
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker $REGION-docker.pkg.dev
+
+      - name: Build and Push Image
+        run: |
+          IMAGE_PATH=$REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/$REPOSITORY/$IMAGE_NAME:${{ github.sha }}
+          docker build -t $IMAGE_PATH .
+          docker push $IMAGE_PATH
+
+      # ✅ Clone config repo safely
+      - name: Checkout Config Repository
+        uses: actions/checkout@v4
+        with:
+          repository: your-github-username/safe-ship-config
+          token: ${{ secrets.GH_PAT }}
+          path: safe-ship-config
+
+      - name: Update Image Tag in Kustomize
+        run: |
+          IMAGE_PATH=$REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/$REPOSITORY/$IMAGE_NAME:${{ github.sha }}
+          cd safe-ship-config/apps/guestbook/overlays/dev
+          kustomize edit set image $IMAGE_PATH
+          git config user.email "github-actions@github.com"
+          git config user.name "github-actions"
+          git add .
+          git commit -m "Bump image to ${{ github.sha }}"
+          git push
