@@ -44,7 +44,7 @@ jobs:
       - name: Checkout Config Repository
         uses: actions/checkout@v4
         with:
-          repository: your-github-username/safe-ship-config
+          repository: Whatever2095/safe-ship-config
           token: ${{ secrets.GH_PAT }}
           path: safe-ship-config
 
